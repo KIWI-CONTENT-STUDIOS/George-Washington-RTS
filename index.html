@@ -1,1 +1,113 @@
-N/A
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>George Washington RTS — Phase 1</title>
+  <style>
+    :root { --ink:#1f2a20; --paper:#d8c79c; --blue:#315b8a; --red:#a44a3f; --gold:#c39a54; }
+    * { box-sizing:border-box; }
+    body { margin:0; overflow:hidden; font-family:Georgia,"Times New Roman",serif; color:var(--ink); background:#172119; }
+    #app { height:100vh; display:grid; grid-template-rows:62px 1fr 34px; }
+    header, footer { display:flex; align-items:center; justify-content:space-between; background:#263629; color:#f3ead2; border-bottom:2px solid #947d50; padding:0 18px; }
+    footer { border:0; border-top:1px solid #947d50; font-size:13px; }
+    h1 { margin:0; font-size:20px; letter-spacing:.5px; }
+    #stats { display:flex; gap:22px; }
+    #game { position:relative; overflow:hidden; background:
+      radial-gradient(circle at 70% 35%,#849a70 0 3%,transparent 3.2%),
+      linear-gradient(135deg,#aeb48a,#718b67); }
+    #map { position:absolute; inset:0; width:100%; height:100%; }
+    .city { cursor:pointer; }
+    .city-ring { fill:#f2e6c2; stroke:#292a20; stroke-width:3; }
+    .city-name { fill:#181d18; stroke:#f2e6c2; stroke-width:4px; paint-order:stroke; font-size:15px; font-weight:bold; text-anchor:middle; pointer-events:none; }
+    .army { stroke:#24281f; stroke-width:2; }
+    #panel { position:absolute; right:18px; top:18px; width:270px; background:rgba(245,237,207,.96); border:2px solid #77653f; box-shadow:5px 7px 0 rgba(24,31,22,.25); padding:16px; }
+    #panel h2 { margin:0 0 8px; padding-bottom:8px; border-bottom:1px solid #a79a72; }
+    #panel p { margin:7px 0; }
+    #panel button { width:100%; margin-top:8px; padding:9px; border:1px solid #3e4a35; background:#d1c18f; color:#20251c; font:700 14px Georgia,serif; cursor:pointer; }
+    #panel button:hover { background:#e2d6a7; }
+    #panel button:disabled { opacity:.45; cursor:not-allowed; }
+    .owned-american { fill:var(--blue); } .owned-british { fill:var(--red); }
+    #toast { position:absolute; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:#263629; color:white; border:1px solid #c4b27c; padding:10px 16px; transition:.25s; }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header><h1>THE REVOLUTIONARY WAR</h1><div id="stats"></div></header>
+    <main id="game">
+      <svg id="map" viewBox="0 0 1200 700" role="img" aria-label="Strategic campaign map">
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#576b50" stroke-width="1" opacity=".18"/></pattern>
+        </defs>
+        <rect width="1200" height="700" fill="#9aaa78"/><rect width="1200" height="700" fill="url(#grid)"/>
+        <path d="M30 600 C180 540,250 610,380 510 S600 420,760 475 S1030 620,1170 520" fill="none" stroke="#65779a" stroke-width="16" opacity=".8"/>
+        <path d="M80 610 C220 555,290 490,390 410 S580 300,710 330 S900 210,1120 280" fill="none" stroke="#78845d" stroke-width="42" opacity=".35"/>
+        <g id="roads" stroke="#9a7c4f" stroke-width="5" fill="none" opacity=".75">
+          <path d="M120 520 L300 430 L455 470 L610 340 L760 290 L910 390 L1060 260"/>
+          <path d="M300 430 L285 240 L420 170 L610 340"/><path d="M610 340 L700 530 L900 390"/>
+          <path d="M455 470 L540 590 L700 530"/><path d="M760 290 L850 120 L1010 150"/>
+        </g>
+        <g id="cities"></g>
+      </svg>
+      <aside id="panel"><h2>Campaign Map</h2><p>Select a city to inspect it or select an American army to move it.</p></aside>
+      <div id="toast"></div>
+    </main>
+    <footer><span>Phase 1 Foundation — No historical battle outcomes are simulated yet</span><span id="year">1775</span></footer>
+  </div>
+<script>
+(() => {
+  const cities = [
+    {id:'portsmouth',name:'Portsmouth',x:1050,y:130,owner:'british',garrison:4,income:14},
+    {id:'boston',name:'Boston',x:1010,y:200,owner:'british',garrison:6,income:22},
+    {id:'hartford',name:'Hartford',x:920,y:300,owner:'american',garrison:3,income:12},
+    {id:'albany',name:'Albany',x:850,y:120,owner:'american',garrison:3,income:11},
+    {id:'new_york',name:'New York',x:760,y:290,owner:'british',garrison:8,income:25},
+    {id:'philadelphia',name:'Philadelphia',x:610,y:340,owner:'american',garrison:5,income:24},
+    {id:'baltimore',name:'Baltimore',x:540,y:440,owner:'american',garrison:2,income:10},
+    {id:'richmond',name:'Richmond',x:455,y:470,owner:'american',garrison:2,income:10},
+    {id:'norfolk',name:'Norfolk',x:620,y:590,owner:'british',garrison:5,income:16},
+    {id:'charlotte',name:'Charlotte',x:700,y:530,owner:'british',garrison:4,income:13},
+    {id:'charleston',name:'Charleston',x:900,y:390,owner:'british',garrison:7,income:20},
+    {id:'savannah',name:'Savannah',x:1060,y:260,owner:'british',garrison:5,income:14},
+    {id:'trenton',name:'Trenton',x:700,y:390,owner:'american',garrison:2,income:8}
+  ];
+  const army = {x:610,y:340,selected:false,soldiers:6};
+  let money=140, selectedCity=null, selectedArmy=false;
+  const map=document.getElementById('map'), cityGroup=document.getElementById('cities'), panel=document.getElementById('panel');
+
+  function ns(name){ return document.createElementNS('http://www.w3.org/2000/svg',name); }
+  function render(){
+    cityGroup.replaceChildren();
+    cities.forEach(c=>{
+      const g=ns('g'); g.classList.add('city'); g.dataset.id=c.id;
+      g.innerHTML=`<circle class="city-ring owned-${c.owner}" cx="${c.x}" cy="${c.y}" r="13"></circle><text class="city-name" x="${c.x}" y="${c.y-20}">${c.name}</text>`;
+      g.addEventListener('click',ev=>{ev.stopPropagation();selectCity(c);});
+      cityGroup.appendChild(g);
+    });
+    const ag=ns('g'); ag.id='army'; ag.classList.add('army');
+    ag.innerHTML=`<circle cx="${army.x}" cy="${army.y}" r="18" fill="#315b8a"/><path d="M${army.x-8} ${army.y+5}l8-16 8 16z" fill="#f3ead2"/><circle cx="${army.x}" cy="${army.y+28}" r="3" fill="#1f2a20"/>`;
+    ag.style.cursor='pointer'; ag.addEventListener('click',ev=>{ev.stopPropagation();selectArmy();});
+    cityGroup.appendChild(ag);
+    document.getElementById('stats').innerHTML=`<span>Money: £${money}</span><span>Continental Army: ${army.soldiers}</span><span>Territories: ${cities.filter(c=>c.owner==='american').length}</span>`;
+  }
+  function selectCity(c){
+    selectedCity=c; selectedArmy=false; army.selected=false;
+    panel.innerHTML=`<h2>${c.name}</h2><p><strong>Owner:</strong> ${c.owner==='american'?'Continental':''}${c.owner==='british'?'British':''}</p><p><strong>Stationed troops:</strong> ${c.garrison}</p><p><strong>Income:</strong> £${c.income}</p><button id="moveHere" ${c.owner==='american'?'disabled':''}>Move selected army here</button><button id="closePanel">Close</button>`;
+    document.getElementById('closePanel').onclick=()=>{panel.innerHTML='<h2>Campaign Map</h2><p>Select a city to inspect it or select an American army to move it.</p>';selectedCity=null};
+    document.getElementById('moveHere').onclick=()=>{if(army.selected) moveArmy(c)};
+  }
+  function selectArmy(){ selectedArmy=true;selectedCity=null;army.selected=true;panel.innerHTML=`<h2>Washington's Army</h2><p><strong>Soldiers:</strong> ${army.soldiers}</p><p><strong>Status:</strong> Awaiting movement order</p><p>Click an enemy-controlled city to move this army.</p><button id="closeArmy">Close</button>`;document.getElementById('closeArmy').onclick=()=>{army.selected=false;selectedArmy=false;panel.innerHTML='<h2>Campaign Map</h2><p>Select a city to inspect it or select an American army to move it.</p>'}; }
+  function moveArmy(c){
+    army.x=c.x;army.y=c.y;army.selected=false;selectedArmy=false;
+    if(c.owner==='british'){ toast(`Army arrived at ${c.name}. ${c.garrison?`A tactical battle would begin; ${c.garrison} defending troops are eligible to fight.`:'The city has no defenders and will be captured.'}`); if(c.garrison===0){c.owner='american';money+=c.income*3;} }
+    else toast(`Army moved to ${c.name}.`);
+    render(); if(c.owner==='american') selectCity(c);
+  }
+  function toast(text){ const el=document.getElementById('toast');el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),4200); }
+  map.addEventListener('click',()=>{if(selectedArmy){/* map movement reserved for cities in Phase 1 */}});
+  render();
+})();
+</script>
+</body>
+</html>
